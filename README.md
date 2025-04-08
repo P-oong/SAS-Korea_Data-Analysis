@@ -25,24 +25,26 @@
 
 | 변수명            | 설명                   | 타입        | 형태(예시)         |
 | -------------- | -------------------- | --------- | -------------- |
-| DATA_YM       | 데이터 작성 월             | numeric   | YYYYMM(202303) |
+| DATA_YM       | 데이터가 작성된 월          | numeric   | YYYYMM(202303) |
 | AREA_ID       | 상권 코드                | numeric   | 9626           |
 | AREA_NM       | 상권 명칭                | character | 중앙로역_4        |
-| DIST_CD       | 상권 위치 지역 코드          | numeric   | 27110          |
-| DIST_NM       | 상권 위치 지역 명칭          | character | 중구             |
+| DIST_CD       | 상권 위치한 지역 코드        | numeric   | 27110          |
+| DIST_NM       | 상권 위치한 지역 명칭        | character | 중구             |
 | TOTAL_BIDG    | 상권 내 총 건물 수          | numeric   | 538            |
-| FAC_NEIGH_1  | 상권 내 1종 생활편의시설 수     | numeric   | 266            |
-| FAC_NEIGH_2  | 상권 내 2종 생활편의시설 수     | numeric   | 88             |
-| FAC_CULT_MTG | 상권 내 문화 및 집회시설 수     | numeric   | 6              |
+| FAC_NEIGH_1  | 상권 내 1종 생활편의시설 수    | numeric   | 266            |
+| FAC_NEIGH_2  | 상권 내 2종 생활편의시설 수    | numeric   | 88             |
+| FAC_CULT_MTG | 상권 내 문화 및 집회시설 수    | numeric   | 6              |
 | FAC_RELG      | 상권 내 종교시설 수          | numeric   | 3              |
 | FAC_RETAIL    | 상권 내 판매시설 수          | numeric   | 2              |
 | FAC_MEDI      | 상권 내 의료시설 수          | numeric   | 3              |
-| FAC_YOSE      | 상권 내 아동 및 노인복지시설 수   | numeric   | 0              |
+| FAC_YOSE      | 상권 내 아동 및 노인복지시설 수  | numeric   | 0              |
 | FAC_TRAIN     | 상권 내 수련원시설 수         | numeric   | 0              |
 | FAC_SPORT     | 상권 내 운동시설 수          | numeric   | 0              |
 | FAC_STAY      | 상권 내 숙박시설 수          | numeric   | 16             |
-| ENERGY_USAGE  | 상권 내 모든 건물의 가스 총 사용량 | numeric   | 517520         |
-| POWER_USAGE   | 상권 내 모든 건물의 전기 총 사용량 | numeric   | 1174.57        |
+| FAC_LEISURE   | 상권 내 여가 및 휴식시설 수    | numeric   | 3              |
+| TOTAL_GAS     | 상권 내 모든 건물의 가스 총 사용량 | numeric   | 517520         |
+| CMRC_GAS      | 상권 내 상업용 가스 사용량      | numeric   | 466070         |
+| TOTAL_ELEC    | 상권 내 모든 건물의 전기 총 사용량 | numeric   | 1174.57        |
 
 ### 📌 평가지표
 

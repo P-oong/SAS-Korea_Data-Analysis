@@ -33,9 +33,6 @@ ENV/
 *.swp
 *.swo
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
 
 # Project specific
 data/*

@@ -12,9 +12,14 @@ class Preprocessor:
     데이터 전처리를 담당하는 클래스
     """
     
-    def __init__(self):
+    def __init__(self, model_type=None):
         """
         Preprocessor 클래스 초기화
+        
+        Parameters:
+        -----------
+        model_type : str, optional
+            사용할 모델 타입 (예: 'CatBoost'). 기본값은 None
         """
         self.scaler = StandardScaler()
         self.feature_names = None
@@ -26,6 +31,7 @@ class Preprocessor:
         self.column_transformer = None
         self.categorical_features = None
         self.numerical_features = None
+        self.model_type = model_type
         self.log_transformed_features = ['TOTAL_BIDG', 'FAC_NEIGH_1', 'FAC_NEIGH_2', 
                                        'FAC_RETAIL', 'FAC_STAY', 'FAC_LEISURE', 
                                        'TOTAL_GAS', 'CMRC_GAS']
@@ -58,6 +64,8 @@ class Preprocessor:
         self.train_encoded_features = None
         # 각 범주형 변수 그룹
         self.category_groups = ['DIST', 'AREA']
+        # CatBoost용 범주형 피처 인덱스 저장
+        self.catboost_cat_features = None
         
     def create_station_feature(self, df):
         """
@@ -211,6 +219,7 @@ class Preprocessor:
     def selective_one_hot_encoding(self, df, categorical_columns, is_train=True):
         """
         모든 범주형 변수에 대해 원핫인코딩을 수행하고 선택된 변수만 유지
+        CatBoost 모델인 경우 원핫인코딩을 건너뛰고 범주형 변수를 그대로 유지
         
         Parameters:
         -----------
@@ -226,6 +235,11 @@ class Preprocessor:
         tuple
             (원핫인코딩이 적용된 데이터프레임, 유지된 인코딩 변수 목록)
         """
+        # CatBoost 모델인 경우 원핫인코딩 건너뛰기
+        if self.model_type == 'CatBoost':
+            logger.info("CatBoost 모델 사용 중: 범주형 변수 원핫인코딩 건너뛰기")
+            return df, categorical_columns
+            
         df_encoded = df.copy()
         all_encoded_columns = []
         encoded_by_group = {group: [] for group in self.category_groups}
@@ -494,6 +508,15 @@ class Preprocessor:
             X_train = train_df_encoded.drop(columns=[target_col])
             X_test = test_df_encoded.copy()
             
+            # CatBoost 모델인 경우 범주형 변수 인덱스 저장
+            if self.model_type == 'CatBoost':
+                cat_features_idx = []
+                for i, col in enumerate(X_train.columns):
+                    if col in self.categorical_features:
+                        cat_features_idx.append(i)
+                self.catboost_cat_features = cat_features_idx
+                logger.info(f"CatBoost 모델용 범주형 변수 인덱스: {cat_features_idx}")
+            
             # 학습 데이터와 테스트 데이터의 컬럼 일치 확인
             missing_cols = set(X_train.columns) - set(X_test.columns)
             extra_cols = set(X_test.columns) - set(X_train.columns)
@@ -535,12 +558,19 @@ class Preprocessor:
             self.X_train = X_train
             self.y_train = y_train
             self.X_test = X_test
-            self.X_train_scaled = X_train_scaled.values
-            self.X_test_scaled = X_test_scaled.values
+            
+            # CatBoost 모델인 경우 스케일링된 값 대신 DataFrame 반환
+            if self.model_type == 'CatBoost':
+                self.X_train_scaled = X_train_scaled
+                self.X_test_scaled = X_test_scaled
+                logger.info("CatBoost 모델 사용 중: DataFrame 형태로 데이터 유지")
+            else:
+                self.X_train_scaled = X_train_scaled.values
+                self.X_test_scaled = X_test_scaled.values
             
             logger.info("데이터 전처리 완료")
-            logger.info(f"최종 학습 데이터 특성 수: {self.X_train_scaled.shape[1]}")
-            logger.info(f"최종 테스트 데이터 특성 수: {self.X_test_scaled.shape[1]}")
+            logger.info(f"최종 학습 데이터 특성 수: {X_train_scaled.shape[1]}")
+            logger.info(f"최종 테스트 데이터 특성 수: {X_test_scaled.shape[1]}")
             
             return self.X_train_scaled, self.y_train, self.X_test_scaled
             

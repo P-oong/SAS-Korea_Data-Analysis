@@ -28,24 +28,14 @@ def main():
             test_path='data/TEST_DATA.csv'
         )
         
-        # 전처리기 초기화
-        preprocessor = Preprocessor()
-        
-        # 데이터 전처리
-        X_train_scaled, y_train, X_test_scaled = preprocessor.preprocess_data(
-            train_df=train_df,
-            test_df=test_df
-        )
-        
         # 모델 이름 설정
-        model_name = 'RandomForest_baseline'
-        
-        # 모델 인스턴스 생성
-        model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=10,
-            random_state=42
-        )
+        #model_name = 'RandomForest_baseline'
+        # # 모델 인스턴스 생성
+        # model = RandomForestRegressor(
+        #     n_estimators=100,
+        #     max_depth=10,
+        #     random_state=42
+        # )
         
         # # XGBoost 모델 설정
         # from xgboost import XGBRegressor
@@ -72,16 +62,16 @@ def main():
         #     random_state=42
         # )
         
-        # # CatBoost 모델 설정
-        # from catboost import CatBoostRegressor
-        # model_name = 'CatBoost'
-        # model = CatBoostRegressor(
-        #     iterations=100,
-        #     depth=6,
-        #     learning_rate=0.1,
-        #     random_seed=42,
-        #     verbose=0
-        # )
+        # CatBoost 모델 설정
+        from catboost import CatBoostRegressor
+        model_name = 'CatBoost'
+        model = CatBoostRegressor(
+            iterations=100,
+            depth=6,
+            learning_rate=0.1,
+            random_seed=42,
+            verbose=0
+        )
         
         # #Gradient Boosting Machine 모델 설정
         # from sklearn.ensemble import GradientBoostingRegressor
@@ -104,11 +94,21 @@ def main():
         #     random_state=42
         # )
         
+        # 전처리기 초기화 (모델 타입 정보 전달)
+        preprocessor = Preprocessor(model_type=model_name)
+        
+        # 데이터 전처리
+        X_train_scaled, y_train, X_test_scaled = preprocessor.preprocess_data(
+            train_df=train_df,
+            test_df=test_df
+        )
+        
         # 모델 트레이너 초기화 (5-fold 교차검증 설정)
         model_trainer = ModelTrainer(
             model=model,
             n_splits=5,
-            random_state=42
+            random_state=42,
+            cat_features=preprocessor.catboost_cat_features if model_name == 'CatBoost' else None
         )
         
         # 모델 학습 (교차검증 포함)

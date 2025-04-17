@@ -59,7 +59,7 @@ def main():
         #     random_state=42
         # )
         
-        # LightGBM 모델 설정
+        # #LightGBM 모델 설정
         # from lightgbm import LGBMRegressor
         # model_name = 'LightGBM'
         # model = LGBMRegressor(
@@ -72,7 +72,7 @@ def main():
         #     random_state=42
         # )
         
-        # CatBoost 모델 설정
+        # # CatBoost 모델 설정
         # from catboost import CatBoostRegressor
         # model_name = 'CatBoost'
         # model = CatBoostRegressor(
@@ -83,7 +83,7 @@ def main():
         #     verbose=0
         # )
         
-        # Gradient Boosting Machine 모델 설정
+        # #Gradient Boosting Machine 모델 설정
         # from sklearn.ensemble import GradientBoostingRegressor
         # model_name = 'GBM'
         # model = GradientBoostingRegressor(
@@ -94,7 +94,7 @@ def main():
         #     random_state=42
         # )
         
-        # Histogram-based Gradient Boosting 모델 설정
+        # # Histogram-based Gradient Boosting 모델 설정
         # from sklearn.ensemble import HistGradientBoostingRegressor
         # model_name = 'HBM'
         # model = HistGradientBoostingRegressor(

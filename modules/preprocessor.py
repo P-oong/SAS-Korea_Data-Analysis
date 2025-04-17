@@ -50,10 +50,14 @@ class Preprocessor:
             'DIST_성남시 중원구', 'DIST_남구', 'DIST_오산시', 'DIST_종로구', 'DIST_구미시', 'DIST_사천시', 'DIST_군산시', 'AREA_송도1동', 'DIST_원주시', 'DIST_포천시', 'AREA_신매역', 'DIST_강동구', 'DIST_수성구',
             'AREA_중앙동_2', 'DIST_장흥군', 'AREA_장흥군청', 'AREA_중앙동', 'DIST_연수구', 'AREA_서창동', 'AREA_향남신도시', 'DIST_전주시 덕진구', 'AREA_남부시장', 'AREA_선부광장', 'AREA_신흥역_2', 'AREA_성결대',
             'DIST_충주시', 'AREA_경성대부경대역_1', 'DIST_청주시 청원구','AREA_중화산2동', 'AREA_흥국상가', 'AREA_동부시장', 'DIST_동두천시', 'DIST_영주시', 'AREA_순천시청', 'DIST_김천시',
-            'AREA_오산시청', 'DIST_수원시 영통구', 'DIST_청양군', 'AREA_청양시외버스터미널', 'DIST_부천시', 'AREA_엠파크타워', 'DIST_양천구'
+            'AREA_오산시청', 'DIST_수원시 영통구', 'DIST_청양군', 'AREA_청양시외버스터미널', 'DIST_부천시', 'AREA_엠파크타워', 'DIST_양천구','AREA_디지털미디어시티', 'AREA_NM_유천아파트앞'
         ]
         # 추가 특성 변수 목록
         self.additional_features = ['IS_STATION', 'IS_eup']
+        # 학습 데이터의 원핫인코딩 결과를 저장
+        self.train_encoded_features = None
+        # 각 범주형 변수 그룹
+        self.category_groups = ['DIST', 'AREA']
         
     def create_station_feature(self, df):
         """
@@ -155,7 +159,56 @@ class Preprocessor:
         
         return categorical_features, numerical_features
     
-    def selective_one_hot_encoding(self, df, categorical_columns):
+    def create_other_variables(self, df_encoded, category_group, all_encoded_cols, selected_features):
+        """
+        특정 범주 그룹(DIST, AREA 등)에 대한 'other' 변수 생성
+        
+        Parameters:
+        -----------
+        df_encoded : pandas.DataFrame
+            원핫인코딩이 수행된 데이터프레임
+        category_group : str
+            범주 그룹 (예: 'DIST', 'AREA')
+        all_encoded_cols : list
+            해당 범주 그룹의 모든 인코딩된 컬럼 목록
+        selected_features : list
+            유지할 인코딩 변수 목록
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            'other' 변수가 추가된 데이터프레임
+        """
+        # 해당 그룹의 컬럼 중 선택된 변수
+        group_selected = [col for col in selected_features if col.startswith(f"{category_group}_")]
+        
+        # 해당 그룹의 모든 컬럼
+        group_all = [col for col in all_encoded_cols if col.startswith(f"{category_group}_")]
+        
+        # 'other' 변수 생성 (선택되지 않은 변수들은 1, 선택된 변수들은 0)
+        other_var_name = f"{category_group}_other"
+        
+        # 선택된 변수들 각각에 대해 0으로 초기화
+        for col in group_selected:
+            if col in df_encoded.columns:
+                df_encoded.loc[df_encoded[col] == 1, other_var_name] = 0
+                
+        # 선택되지 않은 변수들 중 하나라도 1인 경우 other 변수에 1 설정
+        not_selected = [col for col in group_all if col not in group_selected]
+        
+        # not_selected 변수 중 하나라도 1이면 other에 1 설정
+        if not_selected:
+            # other 변수 초기화
+            df_encoded[other_var_name] = 0
+            
+            # 선택되지 않은 변수 합계가 0보다 크면 other에 1 설정
+            df_encoded.loc[df_encoded[not_selected].sum(axis=1) > 0, other_var_name] = 1
+            
+        logger.info(f"'{other_var_name}' 변수 생성 (전체 변수 수: {len(group_all)}, 선택된 변수 수: {len(group_selected)})")
+        
+        return df_encoded
+    
+    def selective_one_hot_encoding(self, df, categorical_columns, is_train=True):
         """
         모든 범주형 변수에 대해 원핫인코딩을 수행하고 선택된 변수만 유지
         
@@ -165,6 +218,8 @@ class Preprocessor:
             원핫인코딩을 수행할 데이터프레임
         categorical_columns : list
             원핫인코딩을 수행할 범주형 변수 목록
+        is_train : bool, optional
+            학습 데이터인지 여부. 기본값은 True
             
         Returns:
         --------
@@ -173,6 +228,7 @@ class Preprocessor:
         """
         df_encoded = df.copy()
         all_encoded_columns = []
+        encoded_by_group = {group: [] for group in self.category_groups}
         
         # 범주형 변수의 원핫인코딩 수행
         for col in categorical_columns:
@@ -191,6 +247,11 @@ class Preprocessor:
             
             # 인코딩된 컬럼 목록 저장
             all_encoded_columns.extend(dummies.columns.tolist())
+            
+            # 그룹별로 인코딩된 컬럼 분류
+            for group in self.category_groups:
+                if prefix == group:
+                    encoded_by_group[group].extend(dummies.columns.tolist())
         
         # 선택된 인코딩 변수만 남기고 나머지 삭제
         all_columns = df_encoded.columns.tolist()
@@ -198,25 +259,46 @@ class Preprocessor:
         # 선택된 변수 중 실제로 데이터프레임에 존재하는 변수만 필터링
         selected_features = [col for col in self.selected_encoded_features if col in all_columns]
         
-        # 선택되지 않은 범주형 변수 찾기
-        not_selected_encoded = [col for col in all_encoded_columns if col not in selected_features]
-        
-        # 'other' 변수 생성
-        if not_selected_encoded:
-            # 모든 범주형 변수 그룹 (DIST, AREA 등)
-            category_groups = set([col.split('_')[0] for col in all_encoded_columns])
+        # 각 그룹별로 'other' 변수 생성 (학습과 테스트 데이터 모두에 동일한 방식으로 생성)
+        for group in self.category_groups:
+            # 'other' 변수 초기화 (기본값 0)
+            other_var_name = f"{group}_other"
+            df_encoded[other_var_name] = 0
             
-            # 각 그룹별로 'other' 변수 생성
-            for group in category_groups:
-                other_vars = [col for col in not_selected_encoded if col.startswith(f"{group}_")]
-                if other_vars:
-                    # 선택되지 않은 변수들의 값을 합쳐서 'other' 변수 생성
-                    df_encoded[f"{group}_other"] = df_encoded[other_vars].sum(axis=1).clip(upper=1)
-                    selected_features.append(f"{group}_other")
-                    logger.info(f"'{group}_other' 변수 생성 (통합된 변수 수: {len(other_vars)})")
+            # 'other' 변수 생성
+            df_encoded = self.create_other_variables(
+                df_encoded, 
+                group, 
+                encoded_by_group[group], 
+                selected_features
+            )
+            
+            # 'other' 변수도 선택된 변수 목록에 추가
+            if other_var_name not in selected_features:
+                selected_features.append(other_var_name)
+        
+        # 학습 데이터인 경우 인코딩된 컬럼 목록 저장
+        if is_train:
+            logger.info("학습 데이터의 원핫인코딩 결과 저장")
+            self.train_encoded_features = selected_features
+        # 테스트 데이터인 경우 학습 데이터와 같은 컬럼 구조로 맞추기
+        elif self.train_encoded_features is not None:
+            logger.info("테스트 데이터를 학습 데이터의 컬럼 구조에 맞춤")
+            # 학습 데이터에 있지만 테스트 데이터에 없는 컬럼 추가
+            for col in self.train_encoded_features:
+                if col not in df_encoded.columns:
+                    df_encoded[col] = 0
+                    logger.info(f"테스트 데이터에 없는 컬럼 추가: {col}")
+            
+            # 테스트 데이터에만 있는 컬럼 제거
+            test_only_cols = [col for col in df_encoded.columns if col in all_encoded_columns 
+                             and col not in self.train_encoded_features]
+            if test_only_cols:
+                df_encoded = df_encoded.drop(columns=test_only_cols)
+                logger.info(f"테스트 데이터에만 있는 컬럼 제거: {test_only_cols}")
         
         # 유지할 컬럼 목록 생성 (원본 수치형 변수 + 선택된 인코딩 변수)
-        keep_columns = [col for col in all_columns if col not in all_encoded_columns or col in selected_features]
+        keep_columns = [col for col in df_encoded.columns if col not in all_encoded_columns or col in selected_features]
         
         # 유지할 컬럼만 남기고 나머지 삭제
         df_encoded = df_encoded[keep_columns]
@@ -312,6 +394,29 @@ class Preprocessor:
             
         return df_cleaned
         
+    def remove_missing_values(self, df):
+        """
+        데이터프레임에서 결측치가 있는 행을 제거
+        
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            처리할 데이터프레임
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            결측치가 제거된 데이터프레임
+        """
+        initial_rows = len(df)
+        df_cleaned = df.dropna()
+        removed_rows = initial_rows - len(df_cleaned)
+        
+        if removed_rows > 0:
+            logger.info(f"결측치가 있는 행 {removed_rows}개 삭제됨")
+            
+        return df_cleaned
+        
     def preprocess_data(self, train_df, test_df, target_col='TOTAL_ELEC'):
         """
         데이터 전처리 수행
@@ -345,7 +450,10 @@ class Preprocessor:
             train_df = self.create_eup_feature(train_df)
             test_df = self.create_eup_feature(test_df)
             
-            # 타겟값 결측 처리
+            # 모든 결측치 제거 (입력 X의 결측치도 제거)
+            train_df = self.remove_missing_values(train_df)
+            
+            # 타겟값 결측 처리 (위에서 이미 모든 결측치를 제거했지만, 타겟만 결측인 경우를 위해 유지)
             train_df = self.remove_missing_target(train_df, target_col)
             
             # 중복 행 제거
@@ -366,14 +474,46 @@ class Preprocessor:
             # 범주형 변수와 수치형 변수 식별
             self.categorical_features, self.numerical_features = self.identify_feature_types(train_df)
             
-            # 선택적 원핫인코딩 적용
-            train_df_encoded, selected_features = self.selective_one_hot_encoding(train_df, self.categorical_features)
-            test_df_encoded, _ = self.selective_one_hot_encoding(test_df, self.categorical_features)
+            # 선택적 원핫인코딩 적용 (학습 데이터)
+            train_df_encoded, selected_features = self.selective_one_hot_encoding(
+                train_df, self.categorical_features, is_train=True
+            )
+            
+            # 선택적 원핫인코딩 적용 (테스트 데이터)
+            test_df_encoded, _ = self.selective_one_hot_encoding(
+                test_df, self.categorical_features, is_train=False
+            )
+            
+            # 테스트 데이터에 타겟 컬럼이 있는 경우 제거
+            if target_col in test_df_encoded.columns:
+                logger.info(f"테스트 데이터에서 타겟 컬럼 {target_col} 제거")
+                test_df_encoded = test_df_encoded.drop(columns=[target_col])
             
             # 타겟 변수 분리
             y_train = train_df_encoded[target_col]
             X_train = train_df_encoded.drop(columns=[target_col])
             X_test = test_df_encoded.copy()
+            
+            # 학습 데이터와 테스트 데이터의 컬럼 일치 확인
+            missing_cols = set(X_train.columns) - set(X_test.columns)
+            extra_cols = set(X_test.columns) - set(X_train.columns)
+            
+            if missing_cols:
+                logger.warning(f"테스트 데이터에 없는 학습 데이터 컬럼: {missing_cols}")
+                # 테스트 데이터에 빠진 컬럼 추가 (0으로 채움)
+                for col in missing_cols:
+                    X_test[col] = 0
+            
+            if extra_cols:
+                logger.warning(f"학습 데이터에 없는 테스트 데이터 컬럼: {extra_cols}")
+                # 학습 데이터에 없는 컬럼 제거
+                X_test = X_test.drop(columns=list(extra_cols))
+            
+            # 컬럼 순서 맞추기
+            X_test = X_test[X_train.columns]
+            
+            logger.info(f"학습 데이터 특성 수: {X_train.shape[1]}")
+            logger.info(f"테스트 데이터 특성 수: {X_test.shape[1]}")
             
             # 특성 이름 저장
             self.feature_names = X_train.columns.tolist()
@@ -399,7 +539,8 @@ class Preprocessor:
             self.X_test_scaled = X_test_scaled.values
             
             logger.info("데이터 전처리 완료")
-            logger.info(f"전처리 후 특성 수: {self.X_train_scaled.shape[1]}")
+            logger.info(f"최종 학습 데이터 특성 수: {self.X_train_scaled.shape[1]}")
+            logger.info(f"최종 테스트 데이터 특성 수: {self.X_test_scaled.shape[1]}")
             
             return self.X_train_scaled, self.y_train, self.X_test_scaled
             

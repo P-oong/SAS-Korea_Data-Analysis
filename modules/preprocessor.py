@@ -52,8 +52,8 @@ class Preprocessor:
             'DIST_충주시', 'AREA_경성대부경대역_1', 'DIST_청주시 청원구','AREA_중화산2동', 'AREA_흥국상가', 'AREA_동부시장', 'DIST_동두천시', 'DIST_영주시', 'AREA_순천시청', 'DIST_김천시',
             'AREA_오산시청', 'DIST_수원시 영통구', 'DIST_청양군', 'AREA_청양시외버스터미널', 'DIST_부천시', 'AREA_엠파크타워', 'DIST_양천구'
         ]
-        # IS_STATION 변수를 추가 (전처리 과정에서 생성됨)
-        self.additional_features = ['IS_STATION']
+        # 추가 특성 변수 목록
+        self.additional_features = ['IS_STATION', 'IS_eup']
         
     def create_station_feature(self, df):
         """
@@ -85,6 +85,39 @@ class Preprocessor:
         else:
             logger.warning("AREA_NM 변수가 없어 IS_STATION 변수를 생성할 수 없습니다")
             df_result['IS_STATION'] = 0
+        
+        return df_result
+        
+    def create_eup_feature(self, df):
+        """
+        AREA_NM 변수에서 '읍' 또는 '읍_숫자'로 끝나는 값을 식별하여 IS_eup 변수 생성
+        
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            처리할 데이터프레임
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            IS_eup 변수가 추가된 데이터프레임
+        """
+        df_result = df.copy()
+        
+        # '읍' 또는 '읍_숫자'로 끝나는 패턴 정의
+        eup_pattern = re.compile(r'읍(_\d+)?$')
+        
+        # AREA_NM 변수가 있는 경우에만 처리
+        if 'AREA_NM' in df_result.columns:
+            # 새로운 변수 생성: 읍 관련 지역인지 여부 (1: 읍 관련, 0: 읍 관련 아님)
+            df_result['IS_eup'] = df_result['AREA_NM'].apply(
+                lambda x: 1 if isinstance(x, str) and eup_pattern.search(x) else 0
+            )
+            logger.info("IS_eup 변수 생성 완료")
+            logger.info(f"읍 관련 지역 수: {df_result['IS_eup'].sum()}")
+        else:
+            logger.warning("AREA_NM 변수가 없어 IS_eup 변수를 생성할 수 없습니다")
+            df_result['IS_eup'] = 0
         
         return df_result
         
@@ -307,6 +340,10 @@ class Preprocessor:
             # IS_STATION 변수 생성
             train_df = self.create_station_feature(train_df)
             test_df = self.create_station_feature(test_df)
+            
+            # IS_eup 변수 생성 
+            train_df = self.create_eup_feature(train_df)
+            test_df = self.create_eup_feature(test_df)
             
             # 타겟값 결측 처리
             train_df = self.remove_missing_target(train_df, target_col)

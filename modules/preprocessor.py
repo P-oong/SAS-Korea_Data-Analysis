@@ -66,6 +66,135 @@ class Preprocessor:
         self.category_groups = ['DIST', 'AREA']
         # CatBoost용 범주형 피처 인덱스 저장
         self.catboost_cat_features = None
+        # 시간 특성 관련 변수
+        self.date_start = None
+        
+    def create_time_features(self, train_df, test_df):
+        """
+        DATA_YM 변수를 사용하여 시간 관련 특성 생성
+        
+        Parameters:
+        -----------
+        train_df : pandas.DataFrame
+            학습 데이터프레임
+        test_df : pandas.DataFrame
+            테스트 데이터프레임
+            
+        Returns:
+        --------
+        tuple
+            (train_df, test_df) 형태의 시간 특성이 추가된 데이터프레임 튜플
+        """
+        logger.info("시간 관련 특성 생성 시작...")
+        
+        # DATA_YM 변수가 없으면 처리 중단
+        if 'DATA_YM' not in train_df.columns or 'DATA_YM' not in test_df.columns:
+            logger.warning("DATA_YM 변수가 없어 시간 특성을 생성할 수 없습니다")
+            return train_df, test_df
+        
+        # 데이터프레임 복사
+        train_df_result = train_df.copy()
+        test_df_result = test_df.copy()
+        
+        # 1. datetime으로 변환
+        try:
+            train_df_result['date'] = pd.to_datetime(train_df_result['DATA_YM'].astype(str), format="%Y%m")
+            test_df_result['date'] = pd.to_datetime(test_df_result['DATA_YM'].astype(str), format="%Y%m")
+            logger.info("DATA_YM을 datetime으로 변환 완료")
+        except Exception as e:
+            logger.error(f"DATA_YM 변수 변환 중 오류: {str(e)}")
+            return train_df, test_df
+        
+        # 2. 기본 시간 특성 생성 (year, month, quarter)
+        train_df_result['year'] = train_df_result['date'].dt.year
+        train_df_result['month'] = train_df_result['date'].dt.month
+        train_df_result['quarter'] = train_df_result['date'].dt.quarter
+        
+        test_df_result['year'] = test_df_result['date'].dt.year
+        test_df_result['month'] = test_df_result['date'].dt.month
+        test_df_result['quarter'] = test_df_result['date'].dt.quarter
+        
+        logger.info("기본 시간 특성(year, month, quarter) 생성 완료")
+        
+        # 3. 연도를 범주형으로 변환
+        train_df_result['year'] = train_df_result['year'].astype('category')
+        test_df_result['year'] = test_df_result['year'].astype('category')
+        logger.info("연도를 범주형 변수로 변환 완료")
+        
+        # 4. 시작 시점 계산 (train 기준) 및 개월 수(t) 계산
+        self.date_start = train_df_result['date'].min()
+        logger.info(f"기준 시작일: {self.date_start}")
+        
+        # train에 t 특성 추가
+        train_df_result['t'] = ((train_df_result['date'].dt.year - self.date_start.year) * 12 +
+                              (train_df_result['date'].dt.month - self.date_start.month)).astype(int)
+        
+        # test에도 동일한 start 기준으로 t 특성 추가
+        test_df_result['t'] = ((test_df_result['date'].dt.year - self.date_start.year) * 12 +
+                             (test_df_result['date'].dt.month - self.date_start.month)).astype(int)
+        
+        logger.info("시작 시점부터의 개월 수(t) 계산 완료")
+        
+        # 5. 월(month) 주기성 변환
+        # 1차 푸리에 변환 (sin/cos)
+        train_df_result['month_sin1'] = np.sin(2 * np.pi * train_df_result['month'] / 12)
+        train_df_result['month_cos1'] = np.cos(2 * np.pi * train_df_result['month'] / 12)
+        
+        test_df_result['month_sin1'] = np.sin(2 * np.pi * test_df_result['month'] / 12)
+        test_df_result['month_cos1'] = np.cos(2 * np.pi * test_df_result['month'] / 12)
+        
+        # 2~3차 푸리에 변환
+        for k in [2, 3]:
+            train_df_result[f'sin{k}'] = np.sin(2 * np.pi * k * train_df_result['t'] / 12)
+            train_df_result[f'cos{k}'] = np.cos(2 * np.pi * k * train_df_result['t'] / 12)
+            
+            test_df_result[f'sin{k}'] = np.sin(2 * np.pi * k * test_df_result['t'] / 12)
+            test_df_result[f'cos{k}'] = np.cos(2 * np.pi * k * test_df_result['t'] / 12)
+        
+        logger.info("월 주기성 변환(1~3차 푸리에) 완료")
+        
+        # 6. 분기(quarter) 주기성 변환
+        train_df_result['quarter_sin'] = np.sin(2 * np.pi * train_df_result['quarter'] / 4)
+        train_df_result['quarter_cos'] = np.cos(2 * np.pi * train_df_result['quarter'] / 4)
+        
+        test_df_result['quarter_sin'] = np.sin(2 * np.pi * test_df_result['quarter'] / 4)
+        test_df_result['quarter_cos'] = np.cos(2 * np.pi * test_df_result['quarter'] / 4)
+        
+        logger.info("분기 주기성 변환 완료")
+        
+        # 7. 계절 변수 생성
+        # 계절 매핑
+        season_map = {
+            12: 'winter', 1: 'winter', 2: 'winter',
+            3: 'spring', 4: 'spring', 5: 'spring',
+            6: 'summer', 7: 'summer', 8: 'summer',
+            9: 'autumn', 10: 'autumn', 11: 'autumn'
+        }
+        
+        train_df_result['season'] = train_df_result['month'].map(season_map).astype('category')
+        test_df_result['season'] = test_df_result['month'].map(season_map).astype('category')
+        
+        # 계절 강도 매핑
+        strength_map = {'summer': 3, 'winter': 2, 'spring': 1, 'autumn': 1}
+        train_df_result['season_strength'] = train_df_result['season'].map(strength_map).astype(int)
+        test_df_result['season_strength'] = test_df_result['season'].map(strength_map).astype(int)
+        
+        logger.info("계절 변수 및 계절 강도 변수 생성 완료")
+        
+        # 8. DATA_YM 변수 제거 (date 변수는 유지, 나중에 제거)
+        train_df_result = train_df_result.drop(columns=['DATA_YM'])
+        test_df_result = test_df_result.drop(columns=['DATA_YM'])
+        
+        logger.info("DATA_YM 변수 제거 완료")
+        
+        # 9. date 변수 제거
+        train_df_result = train_df_result.drop(columns=['date'])
+        test_df_result = test_df_result.drop(columns=['date'])
+        
+        logger.info("date 변수 제거 완료")
+        logger.info("시간 관련 특성 생성 완료")
+        
+        return train_df_result, test_df_result
         
     def create_station_feature(self, df):
         """
@@ -452,6 +581,11 @@ class Preprocessor:
         logger.info("데이터 전처리 시작...")
         
         try:
+            # 시간 관련 특성 생성
+            if 'DATA_YM' in train_df.columns and 'DATA_YM' in test_df.columns:
+                train_df, test_df = self.create_time_features(train_df, test_df)
+                logger.info("시간 관련 특성 추가 완료")
+            
             # 제외할 변수 목록
             exclude_columns = ['AREA_ID', 'DIST_CD', 'FAC_TRAIN']
             logger.info(f"제외할 변수: {exclude_columns}")

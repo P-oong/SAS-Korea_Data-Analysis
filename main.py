@@ -37,17 +37,17 @@ def main():
         #     random_state=42
         # )
         
-        # # XGBoost 모델 설정
-        # from xgboost import XGBRegressor
-        # model_name = 'XGBoost'
-        # model = XGBRegressor(
-        #     n_estimators=100,
-        #     max_depth=6,
-        #     learning_rate=0.1,
-        #     subsample=0.8,
-        #     colsample_bytree=0.8,
-        #     random_state=42
-        # )
+        # XGBoost 모델 설정
+        from xgboost import XGBRegressor
+        model_name = 'XGBoost'
+        model = XGBRegressor(
+            n_estimators=100,
+            max_depth=6,
+            learning_rate=0.1,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42
+        )
         
         # #LightGBM 모델 설정
         # from lightgbm import LGBMRegressor
@@ -62,16 +62,16 @@ def main():
         #     random_state=42
         # )
         
-        # CatBoost 모델 설정
-        from catboost import CatBoostRegressor
-        model_name = 'CatBoost'
-        model = CatBoostRegressor(
-            iterations=100,
-            depth=6,
-            learning_rate=0.1,
-            random_seed=42,
-            verbose=0
-        )
+        # # CatBoost 모델 설정
+        # from catboost import CatBoostRegressor
+        # model_name = 'CatBoost'
+        # model = CatBoostRegressor(
+        #     iterations=100,
+        #     depth=6,
+        #     learning_rate=0.1,
+        #     random_seed=42,
+        #     verbose=0
+        # )
         
         # #Gradient Boosting Machine 모델 설정
         # from sklearn.ensemble import GradientBoostingRegressor

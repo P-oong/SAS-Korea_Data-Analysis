@@ -260,13 +260,25 @@ class ModelOptimizer:
             mean_train_rmse = np.mean(train_scores)
             mean_test_rmse = np.mean(test_scores)
             
+            # 표준편차 계산
+            std_train_rmse = np.std(train_scores)
+            std_test_rmse = np.std(test_scores)
+            
             # 결과 저장
             mean_train_scores.append(-mean_train_rmse)  # 음수로 저장 (높을수록 좋은 점수 형태로)
             mean_test_scores.append(-mean_test_rmse)    # 음수로 저장
             all_params.append(params)
             
+            # 표준편차도 저장
+            if 'std_train_score' not in self.cv_results_:
+                self.cv_results_['std_train_score'] = []
+                self.cv_results_['std_test_score'] = []
+            
+            self.cv_results_['std_train_score'].append(std_train_rmse)
+            self.cv_results_['std_test_score'].append(std_test_rmse)
+            
             if self.verbose >= 1:
-                logger.info(f"  평균 훈련 RMSE: {mean_train_rmse:.4f}, 평균 검증 RMSE: {mean_test_rmse:.4f}")
+                logger.info(f"  평균 훈련 RMSE: {mean_train_rmse:.4f} (±{std_train_rmse:.4f}), 평균 검증 RMSE: {mean_test_rmse:.4f} (±{std_test_rmse:.4f})")
             
             # 최고 점수 갱신
             if -mean_test_rmse > best_score:
@@ -349,6 +361,14 @@ class ModelOptimizer:
                 self.cv_results_ = self.grid_search.cv_results_
                 self.best_score_ = self.grid_search.best_score_
                 self.best_index_ = self.grid_search.best_index_
+                
+                # 표준편차 정보가 없으면 변환하여 저장
+                if 'std_train_score' not in self.cv_results_:
+                    # GridSearchCV는 표준편차 정보를 다른 이름으로 저장하므로 변환
+                    if 'std_train_score' in self.grid_search.cv_results_:
+                        self.cv_results_['std_train_score'] = self.grid_search.cv_results_['std_train_score']
+                    if 'std_test_score' in self.grid_search.cv_results_:
+                        self.cv_results_['std_test_score'] = self.grid_search.cv_results_['std_test_score']
             
             # 결과 출력
             elapsed_time = time.time() - start_time
@@ -516,11 +536,20 @@ class ModelOptimizer:
         if hasattr(self, 'cv_results_'):
             train_score = -self.cv_results_['mean_train_score'][self.best_index_]
             test_score = -self.cv_results_['mean_test_score'][self.best_index_]
+            
+            # 표준편차 정보 출력 (있는 경우)
+            if 'std_train_score' in self.cv_results_ and 'std_test_score' in self.cv_results_:
+                train_std = self.cv_results_['std_train_score'][self.best_index_]
+                test_std = self.cv_results_['std_test_score'][self.best_index_]
+                logger.info(f"학습 데이터 RMSE (원래 스케일): {train_score:.4f} (±{train_std:.4f})")
+                logger.info(f"검증 데이터 RMSE (원래 스케일): {test_score:.4f} (±{test_std:.4f})")
+            else:
+                logger.info(f"학습 데이터 RMSE (원래 스케일): {train_score:.4f}")
+                logger.info(f"검증 데이터 RMSE (원래 스케일): {test_score:.4f}")
+            
             score_diff = train_score - test_score
             score_ratio = train_score / test_score if test_score > 0 else float('inf')
             
-            logger.info(f"학습 데이터 RMSE (원래 스케일): {train_score:.4f}")
-            logger.info(f"검증 데이터 RMSE (원래 스케일): {test_score:.4f}")
             logger.info(f"RMSE 차이: {score_diff:.4f}")
             logger.info(f"RMSE 비율: {score_ratio:.4f}")
             
@@ -539,10 +568,22 @@ class ModelOptimizer:
             for i, idx in enumerate(sorted_indices):
                 params = self.cv_results_['params'][idx]
                 test_score = -self.cv_results_['mean_test_score'][idx]
+                
                 if 'mean_train_score' in self.cv_results_:
                     train_score = -self.cv_results_['mean_train_score'][idx]
-                    logger.info(f"{i+1}. RMSE (원래 스케일): {test_score:.4f} (학습: {train_score:.4f}) - 파라미터: {params}")
+                    
+                    # 표준편차 출력 (있는 경우)
+                    if 'std_train_score' in self.cv_results_ and 'std_test_score' in self.cv_results_:
+                        train_std = self.cv_results_['std_train_score'][idx]
+                        test_std = self.cv_results_['std_test_score'][idx]
+                        logger.info(f"{i+1}. RMSE (원래 스케일): {test_score:.4f} (±{test_std:.4f}) (학습: {train_score:.4f} ±{train_std:.4f}) - 파라미터: {params}")
+                    else:
+                        logger.info(f"{i+1}. RMSE (원래 스케일): {test_score:.4f} (학습: {train_score:.4f}) - 파라미터: {params}")
                 else:
-                    logger.info(f"{i+1}. RMSE (원래 스케일): {test_score:.4f} - 파라미터: {params}")
+                    if 'std_test_score' in self.cv_results_:
+                        test_std = self.cv_results_['std_test_score'][idx]
+                        logger.info(f"{i+1}. RMSE (원래 스케일): {test_score:.4f} (±{test_std:.4f}) - 파라미터: {params}")
+                    else:
+                        logger.info(f"{i+1}. RMSE (원래 스케일): {test_score:.4f} - 파라미터: {params}")
         
         logger.info("=" * 50) 

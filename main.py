@@ -29,7 +29,7 @@ def main():
             test_path='data/TEST_DATA.csv'
         )
         
-        # 모델 이름 설정 (사용할 모델 선택)
+        # 모델 이름 설정 (사용할 모델 선택) # RF 추가예정
         model_name = 'XGBoost'  # 'XGBoost', 'LightGBM', 'CatBoost', 'RandomForest', 'GBM', 'HBM' 중 선택
         
         # 전처리기 초기화 (모델 타입 정보 전달)

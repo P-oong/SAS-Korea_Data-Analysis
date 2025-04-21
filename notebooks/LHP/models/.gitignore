@@ -1,0 +1,4 @@
+# 모델 폴더 내 모든 파일 무시
+*
+# .gitignore 파일은 제외
+!.gitignore

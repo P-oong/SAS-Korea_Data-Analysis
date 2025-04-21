@@ -90,7 +90,13 @@ class ModelOptimizer:
                 enable_categorical=False  # 호환성 문제 해결
             )
         elif self.model_type == 'LightGBM':
-            return LGBMRegressor(random_state=self.random_state)
+            return LGBMRegressor(
+                random_state=self.random_state,
+                verbose=-1,  # 경고 메시지 출력 억제
+                min_child_samples=20,  # 기본값 설정: 작은 리프 노드 방지
+                min_split_gain=0.1,    # 기본값 설정: 최소 분할 이득
+                boost_from_average=True  # 평균에서 부스팅 시작
+            )
         elif self.model_type == 'CatBoost':
             return CatBoostRegressor(random_seed=self.random_state, verbose=0)
         elif self.model_type == 'RandomForest':
@@ -129,20 +135,29 @@ class ModelOptimizer:
                 'num_leaves': [20, 31, 50],
                 'subsample': [0.6, 0.8, 1.0],
                 'colsample_bytree': [0.6, 0.8, 1.0]
+                #'min_child_samples': [20, 50, 100],  # 작은 리프 노드 방지
+                #'min_child_weight': [0.001, 0.01, 0.1],  # 너무 작은 가중치 방지
+                #'min_split_gain': [0.1, 0.5, 1.0],  # 최소 분할 이득 설정
+                #'reg_alpha': [0.0, 0.1, 0.5],  # L1 정규화
+                #'reg_lambda': [0.0, 0.1, 0.5]   # L2 정규화
             }
         elif self.model_type == 'CatBoost':
             return {
                 'iterations': [50, 100, 200],
                 'depth': [4, 6, 8],
                 'learning_rate': [0.01, 0.1, 0.2],
-                'l2_leaf_reg': [1, 3, 5]
+                'l2_leaf_reg': [1, 3, 5],
+                'subsample': [0.6, 0.8, 1.0],           # 데이터 샘플링 비율 추가
+                'rsm': [0.6, 0.8, 1.0]                 # 특성 샘플링 비율 추가 (colsample_bytree와 유사)
             }
         elif self.model_type == 'RandomForest':
             return {
                 'n_estimators': [50, 100, 200],
-                'max_depth': [5, 10, 15],
+                'max_depth': [5, 10, 15, None],        # None 추가 - 제한 없는 트리 깊이
                 'min_samples_split': [2, 5, 10],
-                'min_samples_leaf': [1, 2, 4]
+                'min_samples_leaf': [1, 2, 4],
+                'max_features': ['sqrt', 'log2', 0.7],  # 각 분할에서 고려할 특성 수
+                'bootstrap': [True, False]             # 부트스트랩 샘플링 여부
             }
         elif self.model_type == 'GBM':
             return {
@@ -150,14 +165,17 @@ class ModelOptimizer:
                 'max_depth': [3, 6, 9],
                 'learning_rate': [0.01, 0.1, 0.2],
                 'subsample': [0.6, 0.8, 1.0],
-                'min_samples_split': [2, 5, 10]
+                'min_samples_split': [2, 5, 10],
+                'max_features': ['sqrt', 'log2', 0.7]   # 각 분할에서 고려할 특성 수 추가
             }
         elif self.model_type == 'HBM':
             return {
                 'max_iter': [50, 100, 200],
                 'max_depth': [3, 6, 9],
                 'learning_rate': [0.01, 0.1, 0.2],
-                'min_samples_leaf': [1, 5, 10]
+                'min_samples_leaf': [1, 5, 10],
+                'l2_regularization': [0, 0.1, 0.5],    # L2 정규화 강도 추가
+                'max_bins': [128, 255, 512]            # 히스토그램 빈의 최대 수 추가
             }
         else:
             logger.warning(f"지원하지 않는 모델 타입: {self.model_type}. 기본 파라미터 그리드를 사용합니다.")

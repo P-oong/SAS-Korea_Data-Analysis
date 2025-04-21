@@ -11,6 +11,10 @@ from modules import (
     inverse_transform_predictions
 )
 
+# LightGBM 경고 메시지 억제
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+
 def main():
     # 로깅 설정
     logger = setup_logging()
@@ -30,7 +34,7 @@ def main():
         )
         
         # 모델 이름 설정 (사용할 모델 선택) # RF 추가예정
-        model_name = 'XGBoost'  # 'XGBoost', 'LightGBM', 'CatBoost', 'RandomForest', 'GBM', 'HBM' 중 선택
+        model_name = 'HBM' # 'XGBoost', 'LightGBM', 'CatBoost', 'RandomForest', 'GBM', 'HBM' 중 선택
         
         # 전처리기 초기화 (모델 타입 정보 전달)
         preprocessor = Preprocessor(model_type=model_name)

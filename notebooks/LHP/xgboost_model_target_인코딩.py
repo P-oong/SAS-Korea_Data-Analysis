@@ -268,8 +268,9 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
     # 식별된 변수 이름 로깅 추가
     logger.info(f"식별된 범주형 변수: {categorical_features}")
     logger.info(f"식별된 수치형 변수: {numerical_features}")
-
-    # 타겟인코딩 적용 (원핫인코딩 대신)
+    
+    # 전체 테스트 데이터에 대한 타겟 인코딩은 여전히 필요 (최종 예측 시)
+    # 하지만 교차 검증을 위한 타겟 인코딩은 K-fold 내부로 이동
     train_df_encoded, test_df_encoded, target_encoder = target_encode(
         train_df, test_df, categorical_features, target_col
     )
@@ -307,12 +308,13 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
         'scaler': scaler,
         'target_encoder': target_encoder,
         'feature_names': X_train.columns.tolist(),
-        'log_transformed_features': log_transformed_features
+        'log_transformed_features': log_transformed_features,
+        'categorical_features': categorical_features # 범주형 변수 정보 추가
     }
     
     return X_train_scaled, y_train, X_test_scaled, test_df, preprocess_info
 
-def train_model(X_train, y_train):
+def train_model(X_train, y_train, categorical_features=None):
     """XGBoost 모델 학습 및 k-fold 교차 검증"""
     logger.info("XGBoost 모델 학습 및 k-fold 교차 검증 시작")
     
@@ -359,9 +361,44 @@ def train_model(X_train, y_train):
     fold_rmse_orig = []
     fold_r2 = []
     
+    # 범주형 변수가 있는 경우에만 타겟 인코딩 적용
+    if categorical_features is not None and len(categorical_features) > 0:
+        logger.info("K-fold 검증에서 각 fold별로 타겟 인코딩 적용")
+    
+    X_train_df = X_train.copy()  # DataFrame 형태 유지를 위한 복사
+
     for fold, (train_idx, val_idx) in enumerate(kf.split(X_train), 1):
-        X_fold_train, X_fold_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
+        X_fold_train, X_fold_val = X_train_df.iloc[train_idx].copy(), X_train_df.iloc[val_idx].copy()
         y_fold_train, y_fold_val = y_train.iloc[train_idx], y_train.iloc[val_idx]
+        
+        # 범주형 변수가 있는 경우, 타겟 인코딩을 각 fold 내에서 적용
+        if categorical_features is not None and len(categorical_features) > 0:
+            # 현재 fold의 훈련 데이터만으로 타겟 인코더 훈련
+            encoder = TargetEncoder(target_type='continuous')
+            encoder.fit(X_fold_train[categorical_features], y_fold_train)
+            
+            # 훈련 데이터와 검증 데이터에 타겟 인코딩 적용
+            encoded_train_np = encoder.transform(X_fold_train[categorical_features])
+            encoded_val_np = encoder.transform(X_fold_val[categorical_features])
+            
+            # NumPy 배열을 DataFrame으로 변환
+            encoded_train_df = pd.DataFrame(
+                encoded_train_np,
+                index=X_fold_train.index,
+                columns=categorical_features
+            )
+            encoded_val_df = pd.DataFrame(
+                encoded_val_np,
+                index=X_fold_val.index,
+                columns=categorical_features
+            )
+            
+            # 원본 데이터에서 범주형 변수 제거 후 인코딩 결과 합치기
+            X_fold_train = X_fold_train.drop(columns=categorical_features)
+            X_fold_train = pd.concat([X_fold_train, encoded_train_df], axis=1)
+            
+            X_fold_val = X_fold_val.drop(columns=categorical_features)
+            X_fold_val = pd.concat([X_fold_val, encoded_val_df], axis=1)
         
         # 모델 학습
         fold_model = XGBRegressor(**params)
@@ -461,8 +498,11 @@ def main():
         # 데이터 전처리
         X_train, y_train, X_test, test_df_orig, preprocess_info = preprocess_data(train_df, test_df)
         
-        # 모델 학습
-        model, feature_importance = train_model(X_train, y_train)
+        # 범주형 변수 정보 추출
+        categorical_features = preprocess_info.get('categorical_features', None)
+        
+        # 모델 학습 (범주형 변수 정보 전달)
+        model, feature_importance = train_model(X_train, y_train, categorical_features=categorical_features)
         
         # 테스트 데이터 예측
         predictions_log = model.predict(X_test)

@@ -227,6 +227,18 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
     """데이터 전처리 수행"""
     logger.info("데이터 전처리 시작...")
     
+    # 특정 지역 제거 (AREA_NM이 '수원시청_1' 또는 '유천아파트앞'인 행)
+    excluded_areas = ['수원시청_1', '유천아파트앞']
+    if 'AREA_NM' in train_df.columns:
+        # 해당하는 행 개수 확인
+        excluded_rows = train_df[train_df['AREA_NM'].isin(excluded_areas)]
+        logger.info(f"제거할 행 개수: {len(excluded_rows)}")
+        logger.info(f"제거할 지역 행 세부 정보:\n{excluded_rows['AREA_NM'].value_counts()}")
+        
+        # 해당 행 제거
+        train_df = train_df[~train_df['AREA_NM'].isin(excluded_areas)]
+        logger.info(f"제거 후 train_df 크기: {train_df.shape}")
+    
     # 시간 관련 특성 생성
     if 'DATA_YM' in train_df.columns and 'DATA_YM' in test_df.columns:
         train_df, test_df = create_time_features(train_df, test_df)

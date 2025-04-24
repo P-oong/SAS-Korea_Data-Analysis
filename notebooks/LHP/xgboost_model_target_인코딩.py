@@ -51,12 +51,11 @@ def create_time_features(train_df, test_df):
     train_df_result['date'] = pd.to_datetime(train_df_result['DATA_YM'].astype(str), format="%Y%m")
     test_df_result['date'] = pd.to_datetime(test_df_result['DATA_YM'].astype(str), format="%Y%m")
     
-    # 기본 시간 특성 생성 (year, month, quarter)
+    # 기본 시간 특성 생성 (year, month, quarter) - 모두 범주형으로 변환
     for df in [train_df_result, test_df_result]:
-        df['year'] = df['date'].dt.year
-        df['month'] = df['date'].dt.month
-        df['quarter'] = df['date'].dt.quarter
-        df['year'] = df['year'].astype('category')
+        df['year'] = df['date'].dt.year.astype('category')
+        df['month'] = df['date'].dt.month.astype('category')
+        df['quarter'] = df['date'].dt.quarter.astype('category')
     
     # 시작 시점 계산 (train 기준) 및 개월 수(t) 계산
     date_start = train_df_result['date'].min()
@@ -69,8 +68,8 @@ def create_time_features(train_df, test_df):
     
     # 월(month) 주기성 변환 - 1차 푸리에 변환
     for df in [train_df_result, test_df_result]:
-        df['month_sin1'] = np.sin(2 * np.pi * df['month'] / 12)
-        df['month_cos1'] = np.cos(2 * np.pi * df['month'] / 12)
+        df['month_sin1'] = np.sin(2 * np.pi * df['month'].astype(int) / 12)
+        df['month_cos1'] = np.cos(2 * np.pi * df['month'].astype(int) / 12)
     
     # 2~3차 푸리에 변환
     for k in [2, 3]:
@@ -80,8 +79,8 @@ def create_time_features(train_df, test_df):
     
     # 분기(quarter) 주기성 변환
     for df in [train_df_result, test_df_result]:
-        df['quarter_sin'] = np.sin(2 * np.pi * df['quarter'] / 4)
-        df['quarter_cos'] = np.cos(2 * np.pi * df['quarter'] / 4)
+        df['quarter_sin'] = np.sin(2 * np.pi * df['quarter'].astype(int) / 4)
+        df['quarter_cos'] = np.cos(2 * np.pi * df['quarter'].astype(int) / 4)
     
     # 계절 변수 생성
     season_map = {
@@ -94,7 +93,7 @@ def create_time_features(train_df, test_df):
     strength_map = {'summer': 3, 'winter': 2, 'spring': 1, 'autumn': 1}
     
     for df in [train_df_result, test_df_result]:
-        df['season'] = df['month'].map(season_map).astype('category')
+        df['season'] = df['month'].astype(int).map(season_map).astype('category')
         df['season_strength'] = df['season'].map(strength_map).astype(int)
     
     # DATA_YM 및 date 변수 제거
@@ -163,6 +162,12 @@ def identify_feature_types(df):
     # 범주형 변수 식별 (object 타입 또는 카디널리티가 낮은 변수)
     categorical_features = []
     numerical_features = []
+    
+    # 중요 범주형 변수들의 데이터 타입 확인
+    important_vars = ['year', 'month', 'quarter', 'season']
+    for var in important_vars:
+        if var in df.columns:
+            logger.info(f"변수 {var}의 dtype: {df[var].dtype}")
     
     for col in df.columns:
         if col in exclude_columns:
@@ -281,11 +286,34 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
     logger.info(f"식별된 범주형 변수: {categorical_features}")
     logger.info(f"식별된 수치형 변수: {numerical_features}")
     
-    # 전체 테스트 데이터에 대한 타겟 인코딩은 여전히 필요 (최종 예측 시)
-    # 하지만 교차 검증을 위한 타겟 인코딩은 K-fold 내부로 이동
-    train_df_encoded, test_df_encoded, target_encoder = target_encode(
-        train_df, test_df, categorical_features, target_col
-    )
+    # 타겟인코딩할 변수 (AREA_NM과 DIST_NM만)
+    target_encode_features = []
+    if 'AREA_NM' in train_df.columns:
+        target_encode_features.append('AREA_NM')
+    if 'DIST_NM' in train_df.columns:
+        target_encode_features.append('DIST_NM')
+    
+    # XGBoost 내부 범주형 처리를 위한 변수 (year, month, quarter, season)
+    xgb_categorical_features = []
+    time_categorical_vars = ['year', 'month', 'quarter', 'season']
+    for var in time_categorical_vars:
+        if var in train_df.columns:
+            xgb_categorical_features.append(var)
+    
+    logger.info(f"타겟인코딩 적용할 변수: {target_encode_features}")
+    logger.info(f"XGBoost 내부 범주형 처리할 변수: {xgb_categorical_features}")
+    
+    # 타겟인코딩 적용 (AREA_NM, DIST_NM만)
+    if target_encode_features:
+        train_df_encoded, test_df_encoded, target_encoder = target_encode(
+            train_df, test_df, target_encode_features, target_col
+        )
+    else:
+        # 타겟인코딩할 변수가 없는 경우
+        train_df_encoded = train_df.copy()
+        test_df_encoded = test_df.copy()
+        target_encoder = None
+        logger.info("타겟인코딩할 변수가 없습니다.")
     
     # 타겟 변수 분리
     y_train = train_df_encoded[target_col]
@@ -321,12 +349,14 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
         'target_encoder': target_encoder,
         'feature_names': X_train.columns.tolist(),
         'log_transformed_features': log_transformed_features,
-        'categorical_features': categorical_features # 범주형 변수 정보 추가
+        'categorical_features': categorical_features, # 전체 범주형 변수
+        'target_encode_features': target_encode_features, # 타겟인코딩된 변수
+        'xgb_categorical_features': xgb_categorical_features # XGBoost 내부 범주형 처리할 변수
     }
     
     return X_train_scaled, y_train, X_test_scaled, test_df, preprocess_info
 
-def train_model(X_train, y_train, categorical_features=None):
+def train_model(X_train, y_train, categorical_features=None, xgb_categorical_features=None):
     """XGBoost 모델 학습 및 k-fold 교차 검증"""
     logger.info("XGBoost 모델 학습 및 k-fold 교차 검증 시작")
     
@@ -338,14 +368,35 @@ def train_model(X_train, y_train, categorical_features=None):
         'subsample': 0.8, 
         'colsample_bytree': 1.0, 
         'gamma': 0,
-        'random_state': 42
+        'random_state': 42,
+        'tree_method': 'hist',  # 범주형 변수 지원을 위해 'hist' 방식 사용
+        'enable_categorical': True  # 범주형 변수 처리 활성화
     }
     
     logger.info(f"사용할 파라미터: {params}")
     
+    # XGBoost가 처리할 범주형 변수 확인
+    if xgb_categorical_features:
+        logger.info(f"XGBoost 내부 범주형 처리할 변수: {xgb_categorical_features}")
+        # 범주형 변수가 정수 또는 범주형 타입인지 확인
+        for col in xgb_categorical_features:
+            if col in X_train.columns:
+                if not pd.api.types.is_categorical_dtype(X_train[col]):
+                    logger.info(f"변수 {col}를 범주형으로 변환합니다.")
+                    X_train[col] = X_train[col].astype('category')
+    
     # 모델 학습
     model = XGBRegressor(**params)
-    model.fit(X_train, y_train)
+    try:
+        model.fit(X_train, y_train, eval_metric='rmse')
+    except (TypeError, ValueError) as e:
+        logger.warning(f"범주형 변수 처리 옵션 오류: {e}")
+        # 범주형 변수 처리 관련 옵션 제거 후 재시도
+        params.pop('enable_categorical', None)
+        params.pop('tree_method', None)
+        logger.info(f"대체 파라미터로 재시도: {params}")
+        model = XGBRegressor(**params)
+        model.fit(X_train, y_train, eval_metric='rmse')
     
     # 학습 데이터에 대한 예측
     y_pred_train = model.predict(X_train)
@@ -414,9 +465,25 @@ def train_model(X_train, y_train, categorical_features=None):
             X_fold_val = X_fold_val.drop(columns=categorical_features)
             X_fold_val = pd.concat([X_fold_val, encoded_val_df], axis=1)
         
+        # XGBoost 범주형 변수 처리
+        if xgb_categorical_features:
+            for col in xgb_categorical_features:
+                if col in X_fold_train.columns and not pd.api.types.is_categorical_dtype(X_fold_train[col]):
+                    X_fold_train[col] = X_fold_train[col].astype('category')
+                if col in X_fold_val.columns and not pd.api.types.is_categorical_dtype(X_fold_val[col]):
+                    X_fold_val[col] = X_fold_val[col].astype('category')
+        
         # 모델 학습
         fold_model = XGBRegressor(**params)
-        fold_model.fit(X_fold_train, y_fold_train)
+        try:
+            fold_model.fit(X_fold_train, y_fold_train)
+        except (TypeError, ValueError):
+            # 범주형 변수 처리 관련 옵션 오류 시
+            fold_params = params.copy()
+            fold_params.pop('enable_categorical', None)
+            fold_params.pop('tree_method', None)
+            fold_model = XGBRegressor(**fold_params)
+            fold_model.fit(X_fold_train, y_fold_train)
         
         # 훈련 데이터에 대한 예측 및 성능 계산
         y_fold_train_pred = fold_model.predict(X_fold_train)
@@ -528,10 +595,15 @@ def main():
         X_train, y_train, X_test, test_df_orig, preprocess_info = preprocess_data(train_df, test_df)
         
         # 범주형 변수 정보 추출
-        categorical_features = preprocess_info.get('categorical_features', None)
+        categorical_features = preprocess_info.get('target_encode_features', None)  # 타겟인코딩 적용한 변수만
+        xgb_categorical_features = preprocess_info.get('xgb_categorical_features', None)  # XGBoost 내부 범주형 처리할 변수
         
         # 모델 학습 (범주형 변수 정보 전달)
-        model, feature_importance = train_model(X_train, y_train, categorical_features=categorical_features)
+        model, feature_importance = train_model(
+            X_train, y_train, 
+            categorical_features=categorical_features,
+            xgb_categorical_features=xgb_categorical_features
+        )
         
         # 테스트 데이터 예측
         predictions_log = model.predict(X_test)

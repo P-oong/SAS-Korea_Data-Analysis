@@ -357,9 +357,11 @@ def train_model(X_train, y_train, categorical_features=None):
     logger.info("5-fold 교차 검증 시작...")
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     
-    fold_rmse_log = []
-    fold_rmse_orig = []
-    fold_r2 = []
+    # 필요한 성능 측정치를 저장할 리스트
+    fold_train_rmse = []  # 훈련 데이터 RMSE (원래 스케일)
+    fold_train_r2 = []    # 훈련 데이터 R2
+    fold_val_rmse = []    # 검증 데이터 RMSE (원래 스케일)
+    fold_val_r2 = []      # 검증 데이터 R2
     
     # 범주형 변수가 있는 경우에만 타겟 인코딩 적용
     if categorical_features is not None and len(categorical_features) > 0:
@@ -404,28 +406,43 @@ def train_model(X_train, y_train, categorical_features=None):
         fold_model = XGBRegressor(**params)
         fold_model.fit(X_fold_train, y_fold_train)
         
-        # 검증 데이터 예측
-        y_fold_pred = fold_model.predict(X_fold_val)
+        # 훈련 데이터에 대한 예측 및 성능 계산
+        y_fold_train_pred = fold_model.predict(X_fold_train)
+        y_fold_train_orig = np.expm1(y_fold_train)
+        y_fold_train_pred_orig = np.expm1(y_fold_train_pred)
         
-        # 로그 스케일에서 성능 측정
-        fold_rmse_log.append(np.sqrt(mean_squared_error(y_fold_val, y_fold_pred)))
-        fold_r2.append(r2_score(y_fold_val, y_fold_pred))
+        # 검증 데이터에 대한 예측 및 성능 계산 
+        y_fold_val_pred = fold_model.predict(X_fold_val)
+        y_fold_val_orig = np.expm1(y_fold_val)
+        y_fold_val_pred_orig = np.expm1(y_fold_val_pred)
         
-        # 원래 스케일로 변환 후 성능 측정
-        y_fold_val_inv = np.expm1(y_fold_val)
-        y_fold_pred_inv = np.expm1(y_fold_pred)
-        fold_rmse_orig.append(np.sqrt(mean_squared_error(y_fold_val_inv, y_fold_pred_inv)))
+        # 원래 스케일에서 성능 측정
+        train_rmse = np.sqrt(mean_squared_error(y_fold_train_orig, y_fold_train_pred_orig))
+        train_r2 = r2_score(y_fold_train, y_fold_train_pred)
         
-        logger.info(f"Fold {fold} - RMSE (로그): {fold_rmse_log[-1]:.4f}, RMSE (원래): {fold_rmse_orig[-1]:.4f}, R²: {fold_r2[-1]:.4f}")
+        val_rmse = np.sqrt(mean_squared_error(y_fold_val_orig, y_fold_val_pred_orig))
+        val_r2 = r2_score(y_fold_val, y_fold_val_pred)
+        
+        # 결과 저장
+        fold_train_rmse.append(train_rmse)
+        fold_train_r2.append(train_r2)
+        fold_val_rmse.append(val_rmse)
+        fold_val_r2.append(val_r2)
+        
+        # 결과 출력 (로그 스케일 제외, 훈련과 검증 데이터 모두 포함)
+        logger.info(f"Fold {fold}:")
+        logger.info(f"  훈련 데이터 - RMSE: {train_rmse:.4f}, R²: {train_r2:.4f}")
+        logger.info(f"  검증 데이터 - RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}")
     
     # 교차 검증 결과 평균
-    mean_cv_rmse_log = np.mean(fold_rmse_log)
-    mean_cv_rmse_orig = np.mean(fold_rmse_orig)
-    mean_cv_r2 = np.mean(fold_r2)
+    mean_train_rmse = np.mean(fold_train_rmse)
+    mean_train_r2 = np.mean(fold_train_r2)
+    mean_val_rmse = np.mean(fold_val_rmse)
+    mean_val_r2 = np.mean(fold_val_r2)
     
-    logger.info(f"5-fold 교차 검증 평균 RMSE (로그 스케일): {mean_cv_rmse_log:.4f}")
-    logger.info(f"5-fold 교차 검증 평균 RMSE (원래 스케일): {mean_cv_rmse_orig:.4f}")
-    logger.info(f"5-fold 교차 검증 평균 R² 점수: {mean_cv_r2:.4f}")
+    logger.info("5-fold 교차 검증 평균 성능:")
+    logger.info(f"  훈련 데이터 - RMSE: {mean_train_rmse:.4f}, R²: {mean_train_r2:.4f}")
+    logger.info(f"  검증 데이터 - RMSE: {mean_val_rmse:.4f}, R²: {mean_val_r2:.4f}")
     
     # 기본 특성 중요도 (상위 25개)
     feature_importance = pd.DataFrame({

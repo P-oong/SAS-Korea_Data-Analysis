@@ -9,6 +9,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from datetime import datetime
 from sklearn.model_selection import KFold, cross_val_score
 from sklearn.preprocessing import TargetEncoder
+import shap # SHAP 라이브러리 추가
 
 # 프로젝트 루트 경로 설정 (notebooks/LHP에서 두 단계 상위 디렉토리)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -166,11 +167,12 @@ def identify_feature_types(df):
     for col in df.columns:
         if col in exclude_columns:
             continue
-        if df[col].dtype == 'object' or df[col].dtype == 'category':
+        # 범주형 변수 처리 시 dtype 확인 방식 변경
+        if df[col].dtype.name == 'object' or isinstance(df[col].dtype, pd.CategoricalDtype):
             categorical_features.append(col)
         else:
             numerical_features.append(col)
-    
+            
     logger.info(f"범주형 변수 수: {len(categorical_features)}")
     logger.info(f"수치형 변수 수: {len(numerical_features)}")
     
@@ -263,6 +265,10 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
     # 범주형 변수와 수치형 변수 식별
     categorical_features, numerical_features = identify_feature_types(train_df)
     
+    # 식별된 변수 이름 로깅 추가
+    logger.info(f"식별된 범주형 변수: {categorical_features}")
+    logger.info(f"식별된 수치형 변수: {numerical_features}")
+
     # 타겟인코딩 적용 (원핫인코딩 대신)
     train_df_encoded, test_df_encoded, target_encoder = target_encode(
         train_df, test_df, categorical_features, target_col
@@ -285,8 +291,12 @@ def preprocess_data(train_df, test_df, target_col='TOTAL_ELEC'):
     
     for col in numerical_features:
         if col in X_train.columns:
-            X_train_scaled[col] = scaler.fit_transform(X_train[[col]])
-            X_test_scaled[col] = scaler.transform(X_test[[col]])
+            if col in X_train_scaled.columns and col in X_test_scaled.columns:
+                X_train_scaled[col] = scaler.fit_transform(X_train[[col]])
+                X_test_scaled[col] = scaler.transform(X_test[[col]])
+            else:
+                 logger.warning(f"스케일링 중 컬럼 누락: {col}") # 스케일링 오류 방지
+
     
     logger.info("데이터 전처리 완료")
     logger.info(f"최종 학습 데이터 특성 수: {X_train_scaled.shape[1]}")
@@ -380,15 +390,32 @@ def train_model(X_train, y_train):
     logger.info(f"5-fold 교차 검증 평균 RMSE (원래 스케일): {mean_cv_rmse_orig:.4f}")
     logger.info(f"5-fold 교차 검증 평균 R² 점수: {mean_cv_r2:.4f}")
     
-    # 특성 중요도
+    # 기본 특성 중요도 (상위 25개)
     feature_importance = pd.DataFrame({
         'feature': X_train.columns,
         'importance': model.feature_importances_
     }).sort_values('importance', ascending=False)
     
-    logger.info(f"상위 10개 중요 특성:\n{feature_importance.head(10)}")
+    logger.info(f"상위 25개 중요 특성 (기본):\n{feature_importance.head(25)}")
     
-    return model, feature_importance
+    # SHAP 중요도 계산 (상위 25개)
+    logger.info("SHAP 중요도 계산 시작...")
+    explainer = shap.Explainer(model) # 모델 설명자 생성
+    shap_values = explainer(X_train)  # SHAP 값 계산 (시간 소요될 수 있음)
+    
+    # 각 특성에 대한 평균 절대 SHAP 값 계산
+    shap_sum = np.abs(shap_values.values).mean(axis=0)
+    shap_importance = pd.DataFrame({
+        'feature': X_train.columns,
+        'shap_importance': shap_sum
+    }).sort_values('shap_importance', ascending=False)
+    
+    logger.info(f"상위 25개 중요 특성 (SHAP):\n{shap_importance.head(25)}")
+    
+    # SHAP 요약 플롯 (선택 사항, 콘솔 환경에서는 보이지 않음)
+    # shap.summary_plot(shap_values, X_train, plot_type="bar")
+    
+    return model, feature_importance # 기본 중요도 반환 (필요시 SHAP 중요도 반환하도록 수정 가능)
 
 def save_model_data(model, preprocess_info, model_name='XGBoost_optimized'):
     """모델 저장"""

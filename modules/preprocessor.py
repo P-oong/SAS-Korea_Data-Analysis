@@ -322,26 +322,21 @@ class Preprocessor:
         # 해당 그룹의 모든 컬럼
         group_all = [col for col in all_encoded_cols if col.startswith(f"{category_group}_")]
         
-        # 'other' 변수 생성 (선택되지 않은 변수들은 1, 선택된 변수들은 0)
-        other_var_name = f"{category_group}_other"
-        
-        # 선택된 변수들 각각에 대해 0으로 초기화
-        for col in group_selected:
-            if col in df_encoded.columns:
-                df_encoded.loc[df_encoded[col] == 1, other_var_name] = 0
-                
-        # 선택되지 않은 변수들 중 하나라도 1인 경우 other 변수에 1 설정
+        # 선택되지 않은 변수들 목록
         not_selected = [col for col in group_all if col not in group_selected]
         
-        # not_selected 변수 중 하나라도 1이면 other에 1 설정
+        # 'other' 변수 이름
+        other_var_name = f"{category_group}_other"
+        
+        # 'other' 변수 초기화 (기본값 0)
+        df_encoded[other_var_name] = 0
+        
+        # 선택되지 않은 변수들 중 하나라도 1인 경우 other 변수에 1 설정
         if not_selected:
-            # other 변수 초기화
-            df_encoded[other_var_name] = 0
-            
-            # 선택되지 않은 변수 합계가 0보다 크면 other에 1 설정
+            # 선택되지 않은 변수들의 합이 0보다 크면 other에 1 설정
             df_encoded.loc[df_encoded[not_selected].sum(axis=1) > 0, other_var_name] = 1
             
-        logger.info(f"'{other_var_name}' 변수 생성 (전체 변수 수: {len(group_all)}, 선택된 변수 수: {len(group_selected)})")
+        logger.info(f"'{other_var_name}' 변수 생성 (전체 변수 수: {len(group_all)}, 선택된 변수 수: {len(group_selected)}, 기타로 묶인 변수 수: {len(not_selected)})")
         
         return df_encoded
     
@@ -396,14 +391,13 @@ class Preprocessor:
                 if prefix == group:
                     encoded_by_group[group].extend(dummies.columns.tolist())
         
-        # 선택된 인코딩 변수만 남기고 나머지 삭제
-        all_columns = df_encoded.columns.tolist()
-        
         # 선택된 변수 중 실제로 데이터프레임에 존재하는 변수만 필터링
+        all_columns = df_encoded.columns.tolist()
         selected_features = [col for col in self.selected_encoded_features if col in all_columns]
         
-        # 각 그룹별로 'other' 변수 생성 (학습과 테스트 데이터 모두에 동일한 방식으로 생성)
+        # 각 그룹별로 'other' 변수 생성
         for group in self.category_groups:
+            # 'other' 변수 생성
             # 'other' 변수 초기화 (기본값 0)
             other_var_name = f"{group}_other"
             df_encoded[other_var_name] = 0

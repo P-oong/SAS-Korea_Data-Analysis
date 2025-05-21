@@ -1,5 +1,5 @@
 # 2025 한국데이터정보과학회 & SAS KOREA 데이터 분석 경진대회
-
+https://granite-toucan-e40.notion.site/SAS-Korea_Data-Analysis-1c8c7012518d803dbaf6f5c53fdb7c72
 ## 🔍 대회 목적
 
 - 기관에서 조사한 상권별 전기 사용량 데이터를 활용하여 각 상권의 평균 전기 총 사용량을 예측하는 모델을 개발하는 것이 목적입니다.
